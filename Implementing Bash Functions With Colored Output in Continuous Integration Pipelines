@@ -1,0 +1,180 @@
+#!/bin/bash
+
+set -e
+
+readonly PROGRAM_NAME="$(basename "$0" .sh)"
+readonly REQUIRED_UTILS=(
+    python3
+    curl
+)
+readonly HTML_DIRECTORY=~/html
+readonly SERVER_PORT=9090
+
+readonly GREEN="\e[1;32m"
+readonly RED="\e[1;31m"
+readonly ENDCOLOR="\e[0m"
+
+#-----------------------------------#
+#       Script functions            #
+#-----------------------------------#
+success() {
+    local text="$*"
+    echo -e "${GREEN}${text}${ENDCOLOR}"
+}
+
+fail() {
+    local text="$*"
+    echo -e "${RED}${text}${ENDCOLOR}"  
+}
+
+help() {
+    echo "USAGE: ${PROGRAM_NAME} --help [--mode=ci ]"
+    echo ""
+    echo "OPTIONS:"
+    echo ""
+    echo "   --mode Defines what mode the script will run on."
+    echo "          Only 'ci' is implemented as of now."
+    echo ""
+    echo "   --help  Show this help message."
+    echo ""
+}
+
+parse_args() {
+    count="$#"
+
+    if [ "$count" -eq 0 ]; then
+        echo "At least one parameter is required."
+        help
+        exit 1
+    fi
+
+    for i in $(seq "${count}"); do
+        eval arg="\$$i"
+        param="$(echo "${arg}" | awk -F '=' '{print $1}' | sed -e 's|--||')"
+        val="$(echo "${arg}" | awk -F '=' '{print $2}')"
+
+        case "${param}" in
+          mode)
+            if [ "$val" = '' ] || [ "$val" != "ci" ]; then
+                echo "Not a valid value for mode. Valid values: 'ci', got: '$val'"
+                help
+                exit 1
+            fi
+            ;;
+          help)
+            help
+            exit 0
+            ;;
+          *)
+            echo "Parameter not found: '$param'"
+            help
+            exit 1
+            ;;
+        esac
+    done  
+}
+
+check_utils() {
+    echo "Validating packages ..."
+    for utils in ${REQUIRED_UTILS[*]}; do
+        # If exit code of "command -v" not equal to 0, fail
+        if ! command -v "${utils}" >/dev/null 2>&1; then
+          echo -e "\n $utils is missing, please install it as this script requires it."
+          exit 1
+        fi
+    done
+}
+
+generate_html() {
+    mkdir -p $HTML_DIRECTORY
+    echo "Generating html ..."
+cat <<EOF >$HTML_DIRECTORY/index.html
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="utf-8">
+        <title></title>
+    </head>
+    <body>
+        Hello world! The date is $(date) and the user is $USER
+    </body>
+    </html>
+EOF
+}
+
+mandatory_checks() {
+    check_utils
+    generate_html
+}
+
+start_server() {
+    log_file_name=server.log
+
+    echo "Starting the server ..."
+    cd ~/html
+    pkill -f http.server || true
+    nohup python3 -m http.server $SERVER_PORT > $log_file_name 2>&1 &
+
+    echo "Waiting for the server to boot up ..."
+    sleep 3
+
+    if grep -iq error $log_file_name; then
+        echo "Error!"
+        tail $log_file_name
+        exit 1
+    fi
+
+    echo "Server is up and running on port $SERVER_PORT"
+
+}
+
+test_status_code() {
+    echo "++++ Status code test: STARTED ++++"
+    status_code=$(curl -s -o /dev/null -w "%{http_code}" localhost:$SERVER_PORT ||true)
+    if [ "$status_code" -ne 200 ]; then
+        echo "Error! server responded with status_code $status_code"
+        fail "++++ Status code test: FAILED ++++"
+    else
+        success "++++ Status code test: PASSED ++++"
+    fi
+}
+
+test_response_body() {
+    echo "++++ Body response test: STARTED ++++"
+    body=$(curl -s localhost:$SERVER_PORT || true)
+
+    if ! grep -q "Hello world" <<< $body; then
+        echo "Error! Unexpected body $body"
+        fail "++++ Body response test: FAILED ++++"
+    else
+        success "++++ Body response test: PASSED ++++"
+    fi
+    echo "Server's body response: $body"
+
+}
+
+run_tests() {
+    test_status_code
+    test_response_body
+}
+
+clean_up() {
+    echo "Running post clean up steps ..."
+    trap "rm -rf ~/html && (pkill -f http.server || true)" EXIT
+}
+
+
+#-----------------------------------#
+#       Script steps                #
+#-----------------------------------#
+
+# Look how organized the code looks after these changes! 
+# You can see a high-level view of what steps the script is running
+# Simply by looking at the calls to the functions.
+# This increases readability a lot!
+
+parse_args "$@"
+mandatory_checks
+start_server
+run_tests
+clean_up

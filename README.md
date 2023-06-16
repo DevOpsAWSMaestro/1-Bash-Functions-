@@ -79,4 +79,5 @@ Implement colored output for CI tests
 In this task, you will create two brand new functions to add colors to the CI test results (PASSED and FAILED). 1) The first function will receive text and it will output it as is, but colored in green. It will be used to print out the PASSED tests. 2) The second function will also receive text, but it will output it in red for FAILED tests.
 Once the functions are ready, run the script and ensure that the output for the PASSED tests is green and for the FAILED tests is red.
 
+![Screenshot (402)](https://github.com/DevOpsAWSMaestro/1-Bash-Functions-/assets/134851032/5bb93bff-227c-4f28-92a2-bbe7362fb2be)
 
